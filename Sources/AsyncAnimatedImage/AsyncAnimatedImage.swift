@@ -66,7 +66,3 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
 public func AsyncAnimatedImage(url: URL?) -> Image {
     AnimatedImageCache.shared.gifImage(for: url)
 }
-
-public func AsyncAnimatedImage(url: URL?) -> Text {
-    Text(AnimatedImageCache.shared.gifImage(for: url))
-}
