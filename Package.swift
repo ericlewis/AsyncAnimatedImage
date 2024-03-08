@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "AsyncAnimatedImageUI",
+    name: "AsyncAnimatedImage",
     platforms: [.iOS(.v17), .visionOS(.v1), .tvOS(.v17), .macCatalyst(.v17)],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
