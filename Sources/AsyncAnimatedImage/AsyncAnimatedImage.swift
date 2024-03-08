@@ -52,12 +52,14 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
     
     // MARK: Animation
     func animate(withGIFURL imageURL: URL, loopCount: Int = 0, preparationBlock: (() -> Void)? = nil, animationBlock: (() -> Void)? = nil, loopBlock: (() -> Void)? = nil) {
+        self.task?.cancel()
         self.task = Task(priority: .background) {
             do {
                 let (data, _) = try await URLSession.shared.data(from: imageURL)
                 try Task.checkCancellation()
+                let image = UIImage(data: data)
                 await MainActor.run {
-                    self.image = UIImage(data: data)
+                    self.image = image
                     self.delegate?.update(url: imageURL, imageHash: self.image.hashValue ?? 0)
                     self.animate(withGIFData: data, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
                 }
