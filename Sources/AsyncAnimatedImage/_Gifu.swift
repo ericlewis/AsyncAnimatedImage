@@ -46,7 +46,7 @@ public class _Animator {
     var frameBufferCount = 50
     
     /// Specifies whether GIF frames should be resized.
-    var shouldResizeFrames = false
+    var shouldResizeFrames = true
     
     /// Responsible for loading individual frames and resizing them if necessary.
     var frameStore: _FrameStore?
