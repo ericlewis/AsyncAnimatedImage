@@ -68,14 +68,16 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
 }
 
 
-@Observable class AnimatedImageCache: GIFAnimatableDelegate, ObservableObject {
+@Observable public class AnimatedImageCache: GIFAnimatableDelegate, ObservableObject {
     
-    static let shared = AnimatedImageCache()
+    public static let shared = AnimatedImageCache()
     
     private var containers: [URL: GIFAnimationContainer] = [:]
     private(set) var images: [URL: UIImage] = [:]
+    
+    public init() {}
 
-    func register(url: URL?) -> UIImage? {
+    private func register(url: URL?) -> UIImage? {
         guard let url else { return nil }
         if let image = images[url] {
             return image
@@ -86,11 +88,11 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
         return images[url]
     }
     
-    func gifImage(for url: URL?) -> Image {
+    public func gifImage(for url: URL?) -> Image {
         Image(uiImage: register(url: url) ?? UIImage())
     }
     
-    func update(url: URL, image: UIImage) {
+    internal func update(url: URL, image: UIImage) {
         images[url] = image
     }
 }
