@@ -9,11 +9,11 @@ class GIFAnimationContainer: _GIFAnimatable {
     // MARK: Properties
     var image: UIImage?
     
-    lazy var animator: _Animator? = _Animator(withDelegate: self)
+    lazy var animator: _Animator = _Animator(withDelegate: self)
     
     var url: URL
     var task: Task<Void, Never>?
-    weak var delegate: GIFAnimatableDelegate?
+    weak var delegate: GIFAnimatableDelegate!
     
     // MARK: Initializer
     init(url: URL, delegate: GIFAnimatableDelegate) {
@@ -24,8 +24,9 @@ class GIFAnimationContainer: _GIFAnimatable {
     }
     
     func animatorHasNewFrame() {
-        self.image = animator?.activeFrame()
-        self.delegate?.update(url: self.url, imageHash: self.image.hashValue ?? 0)
+        guard let frame = animator.activeFrame() else { return }
+        self.image = frame
+        self.delegate.update(url: self.url, imageHash: frame.hashValue)
     }
     
     // MARK: Animation
@@ -36,11 +37,9 @@ class GIFAnimationContainer: _GIFAnimatable {
                 let (data, _) = try await URLSession.shared.data(from: imageURL)
                 try Task.checkCancellation()
                 let image = UIImage(data: data)
-                await MainActor.run {
-                    self.image = image
-                    self.delegate?.update(url: imageURL, imageHash: self.image.hashValue ?? 0)
-                    self.animator?.animate(withGIFData: data, size: .zero, contentMode: .center, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
-                }
+                self.image = image
+                self.delegate.update(url: imageURL, imageHash: image?.hashValue ?? 0)
+                self.animator.animate(withGIFData: data, size: .zero, contentMode: .center, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
             } catch {
                 // Consider a better error handling mechanism here, e.g., delegate method.
                 print("Error downloading gif:", error.localizedDescription, "at url:", imageURL.absoluteString)
@@ -57,6 +56,7 @@ class GIFAnimationContainer: _GIFAnimatable {
 @Observable public class AnimatedImageCache: GIFAnimatableDelegate {
     
     public static let shared = AnimatedImageCache()
+    private static let placeholder: UIImage = .init()
     
     private var containers: NSCache<NSURL, GIFAnimationContainer> = .init()
     
@@ -74,7 +74,7 @@ class GIFAnimationContainer: _GIFAnimatable {
     }
     
     public func gifImage(for url: URL?) -> Image {
-        Image(uiImage: register(url: url) ?? UIImage())
+        Image(uiImage: register(url: url) ?? Self.placeholder)
     }
     
     internal func update(url: URL, imageHash: Int) {
