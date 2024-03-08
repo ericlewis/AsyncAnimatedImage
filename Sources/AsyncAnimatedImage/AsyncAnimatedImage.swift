@@ -26,6 +26,7 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
     var contentMode: UIView.ContentMode = .scaleAspectFit
     
     var url: URL
+    var task: Task<Void, Never>?
     weak var delegate: GIFAnimatableDelegate?
     
     // MARK: Initializer
@@ -51,9 +52,10 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
     
     // MARK: Animation
     func animate(withGIFURL imageURL: URL, loopCount: Int = 0, preparationBlock: (() -> Void)? = nil, animationBlock: (() -> Void)? = nil, loopBlock: (() -> Void)? = nil) {
-        Task(priority: .background) {
+        self.task = Task(priority: .background) {
             do {
                 let (data, _) = try await URLSession.shared.data(from: imageURL)
+                try Task.checkCancellation()
                 await MainActor.run {
                     self.image = UIImage(data: data)
                     self.delegate?.update(url: imageURL, image: self.image ?? UIImage())
@@ -64,6 +66,10 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
                 print("Error downloading gif:", error.localizedDescription, "at url:", imageURL.absoluteString)
             }
         }
+    }
+    
+    deinit {
+        self.task?.cancel()
     }
 }
 
