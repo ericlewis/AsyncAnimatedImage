@@ -54,7 +54,7 @@ class GIFAnimationContainer: _GIFAnimatable {
 }
 
 
-@Observable public class AnimatedImageCache: GIFAnimatableDelegate, ObservableObject {
+@Observable public class AnimatedImageCache: GIFAnimatableDelegate {
     
     public static let shared = AnimatedImageCache()
     
