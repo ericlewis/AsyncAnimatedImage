@@ -13,13 +13,11 @@ let package = Package(
             targets: ["AsyncAnimatedImageUI"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/agg23/Gifu", branch: "master"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "AsyncAnimatedImageUI",
-            dependencies: ["Gifu"]),
+            name: "AsyncAnimatedImageUI"),
     ]
 )
