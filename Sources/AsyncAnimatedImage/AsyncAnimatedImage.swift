@@ -12,14 +12,15 @@ class GIFAnimationContainer: _GIFAnimatable {
     lazy var animator: _Animator = _Animator(withDelegate: self)
     
     var url: URL
+    var size: CGSize
     var task: Task<Void, Never>?
     weak var delegate: GIFAnimatableDelegate!
     
     // MARK: Initializer
-    init(url: URL, delegate: GIFAnimatableDelegate) {
+    init(url: URL, size: CGSize, delegate: GIFAnimatableDelegate) {
         self.url = url
         self.delegate = delegate
-        
+        self.size = size
         animate(withGIFURL: url)
     }
     
@@ -36,10 +37,10 @@ class GIFAnimationContainer: _GIFAnimatable {
             do {
                 let (data, _) = try await URLSession.shared.data(from: imageURL)
                 try Task.checkCancellation()
-                let image = UIImage(data: data)
+                let image = size == .zero ? UIImage(data: data) : UIImage(data: data)?.resized(to: size)
                 self.image = image
                 self.delegate.update(url: imageURL, imageHash: image?.hashValue ?? 0)
-                self.animator.animate(withGIFData: data, size: .zero, contentMode: .center, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
+                self.animator.animate(withGIFData: data, size: size, contentMode: .center, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
             } catch {
                 // Consider a better error handling mechanism here, e.g., delegate method.
                 print("Error downloading gif:", error.localizedDescription, "at url:", imageURL.absoluteString)
@@ -64,17 +65,17 @@ class GIFAnimationContainer: _GIFAnimatable {
     
     public init() {}
     
-    private func register(url: URL?) -> UIImage? {
+    private func register(url: URL?, size: CGSize) -> UIImage? {
         guard let url else { return nil }
         if containers.object(forKey: url as NSURL) == nil {
-            containers.setObject(GIFAnimationContainer(url: url, delegate: self), forKey: url as NSURL)
+            containers.setObject(GIFAnimationContainer(url: url, size: size, delegate: self), forKey: url as NSURL)
         }
         let _ = imageHashes[url]
         return containers.object(forKey: url as NSURL)?.image
     }
     
-    public func gifImage(for url: URL?) -> Image {
-        Image(uiImage: register(url: url) ?? Self.placeholder)
+    public func gifImage(for url: URL?, size: CGSize = .zero) -> Image {
+        Image(uiImage: register(url: url, size: size) ?? Self.placeholder)
     }
     
     internal func update(url: URL, imageHash: Int) {
@@ -82,6 +83,6 @@ class GIFAnimationContainer: _GIFAnimatable {
     }
 }
 
-public func AsyncAnimatedImage(url: URL?) -> Image {
-    AnimatedImageCache.shared.gifImage(for: url)
+public func AsyncAnimatedImage(url: URL?, size: CGSize = .zero) -> Image {
+    AnimatedImageCache.shared.gifImage(for: url, size: size)
 }
