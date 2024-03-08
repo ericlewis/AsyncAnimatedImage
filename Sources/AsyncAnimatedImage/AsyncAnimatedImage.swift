@@ -78,8 +78,13 @@ class GIFAnimationContainer: _GIFAnimatable {
         Image(uiImage: register(url: url, size: size) ?? Self.placeholder)
     }
     
+    @MainActor
     internal func update(url: URL, imageHash: Int) {
         imageHashes[url] = imageHash
+    }
+    
+    public func flush() {
+        containers.removeAllObjects()
     }
 }
 
