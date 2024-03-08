@@ -2,7 +2,7 @@ import SwiftUI
 import Gifu
 
 protocol GIFAnimatableDelegate: AnyObject {
-    func update(url: URL, image: UIImage)
+    func update(url: URL, imageHash: Int)
 }
 
 class CallbackLayer: CALayer {
@@ -46,7 +46,7 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
         callbackLayer.onDisplay = { [weak self] in
             guard let self = self else { return }
             self.updateImageIfNeeded()
-            self.delegate?.update(url: self.url, image: self.image ?? UIImage())
+            self.delegate?.update(url: self.url, imageHash: self.image.hashValue ?? 0)
         }
     }
     
@@ -58,7 +58,7 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
                 try Task.checkCancellation()
                 await MainActor.run {
                     self.image = UIImage(data: data)
-                    self.delegate?.update(url: imageURL, image: self.image ?? UIImage())
+                    self.delegate?.update(url: imageURL, imageHash: self.image.hashValue ?? 0)
                     self.animate(withGIFData: data, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
                 }
             } catch {
@@ -78,28 +78,27 @@ class GIFAnimationContainer: GIFAnimatable, ImageContainer {
     
     public static let shared = AnimatedImageCache()
     
-    private var containers: [URL: GIFAnimationContainer] = [:]
-    private(set) var images: [URL: UIImage] = [:]
+    private var containers: NSCache<NSURL, GIFAnimationContainer> = .init()
+    
+    var imageHashes: [URL: Int] = [:]
     
     public init() {}
 
     private func register(url: URL?) -> UIImage? {
         guard let url else { return nil }
-        if let image = images[url] {
-            return image
+        if containers.object(forKey: url as NSURL) == nil {
+            containers.setObject(GIFAnimationContainer(url: url, delegate: self), forKey: url as NSURL)
         }
-        if containers[url] == nil {
-            containers[url] = GIFAnimationContainer(url: url, delegate: self)
-        }
-        return images[url]
+        let _ = imageHashes[url]
+        return containers.object(forKey: url as NSURL)?.image
     }
     
     public func gifImage(for url: URL?) -> Image {
         Image(uiImage: register(url: url) ?? UIImage())
     }
     
-    internal func update(url: URL, image: UIImage) {
-        images[url] = image
+    internal func update(url: URL, imageHash: Int) {
+        imageHashes[url] = imageHash
     }
 }
 
