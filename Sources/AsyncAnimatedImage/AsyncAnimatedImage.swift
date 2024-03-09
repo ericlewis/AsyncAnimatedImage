@@ -32,7 +32,8 @@ class GIFAnimationContainer: _GIFAnimatable {
     
     // MARK: Animation
     func animate(withGIFURL imageURL: URL, loopCount: Int = 0, preparationBlock: (() -> Void)? = nil, animationBlock: (() -> Void)? = nil, loopBlock: (() -> Void)? = nil) {
-        Task(priority: .background) {
+        self.task?.cancel()
+        self.task = Task(priority: .background) {
             do {
                 let (data, _) = try await URLSession.shared.data(from: imageURL)
                 try Task.checkCancellation()
