@@ -35,9 +35,20 @@ class GIFAnimationContainer: _GIFAnimatable {
         self.task?.cancel()
         self.task = Task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: imageURL)
-                try Task.checkCancellation()
-                let image = size == .zero ? UIImage(data: data) : UIImage(data: data)?.resized(to: size)
+                let image: UIImage?
+                let data: Data
+                if let storedImage = AnimatedImageCache.shared.getImage(for: imageURL) {
+                    image = storedImage.image
+                    data = storedImage.data
+                } else {
+                    let (receivedData, _) = try await URLSession.shared.data(from: imageURL)
+                    try Task.checkCancellation()
+                    image = size == .zero ? UIImage(data: receivedData) : UIImage(data: receivedData)?.resized(to: size)
+                    data = receivedData
+
+                    AnimatedImageCache.shared.set(image: image, data: data, for: imageURL)
+                }
+
                 self.image = image
                 self.delegate.update(url: imageURL, imageHash: image?.hashValue ?? 0)
                 self.animator.animate(withGIFData: data, size: size, contentMode: .center, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
@@ -53,38 +64,125 @@ class GIFAnimationContainer: _GIFAnimatable {
     }
 }
 
+class RetainedAnimationContainer {
+    let container: GIFAnimationContainer
+    public var refCount: Int
+
+    internal init(container: GIFAnimationContainer) {
+        self.container = container
+        self.refCount = 0
+    }
+}
+
+class ImageContainer {
+    let image: UIImage
+    let data: Data
+
+    internal init(image: UIImage, data: Data) {
+        self.image = image
+        self.data = data
+    }
+}
 
 @Observable public class AnimatedImageCache: GIFAnimatableDelegate {
-    
     public static let shared = AnimatedImageCache()
     private static let placeholder: UIImage = .init()
-    
-    private var containers: NSCache<NSURL, GIFAnimationContainer> = .init()
-    
+
+    private var timer: Timer?
+
+    private var containers: [URL: RetainedAnimationContainer] = [:]
+    private var images: NSCache<NSURL, ImageContainer> = .init()
+
     var imageHashes: [URL: Int] = [:]
     
-    public init() {}
-    
+    public init() {
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+            // We use a reoccuring timer to clean up groups of images that aren't being referenced
+            // This prevents issues with registering images in render right after we dereference a container
+            for (url, container) in self.containers {
+                if container.refCount <= 0 {
+                    // Destroy container
+                    self.containers.removeValue(forKey: url)
+                }
+            }
+        }
+    }
+
     private func register(url: URL?, size: CGSize) -> UIImage? {
         guard let url else { return nil }
-        if containers.object(forKey: url as NSURL) == nil {
-            containers.setObject(GIFAnimationContainer(url: url, size: size, delegate: self), forKey: url as NSURL)
+
+        var cachedContainer = containers[url]
+
+        if cachedContainer == nil {
+            let container = RetainedAnimationContainer(container: GIFAnimationContainer(url: url, size: size, delegate: self))
+            containers[url] = container
+            cachedContainer = container
         }
+
+        // Indicate to SwiftUI that it should rerender due to the observable (the dictionary) changing
         let _ = imageHashes[url]
-        return containers.object(forKey: url as NSURL)?.image
+        return cachedContainer?.container.image
     }
-    
+
     public func gifImage(for url: URL?, size: CGSize = .zero) -> Image {
         Image(uiImage: register(url: url, size: size) ?? Self.placeholder)
     }
-    
+
+    public func onAppear(for url: URL) {
+        guard let container = containers[url] else {
+            print("Attempted to increment refcount image at URL \(url), but image has not been registered")
+            return
+        }
+
+        container.refCount += 1
+    }
+
+    public func onAppear(for urls: [URL]) {
+        for url in urls {
+            onAppear(for: url)
+        }
+    }
+
+    public func onDisappear(for url: URL) {
+        guard let container = containers[url] else {
+            print("Attempted to decrement refcount image at URL \(url), but image has not been registered")
+            return
+        }
+
+        // We will destroy the container via a periodic task
+        container.refCount -= 1
+
+        if container.refCount < 0 {
+            container.refCount = 0
+        }
+    }
+
+    public func onDisappear(for urls: [URL]) {
+        for url in urls {
+            onDisappear(for: url)
+        }
+    }
+
+    public func flush() {
+        containers.removeAll()
+    }
+
     @MainActor
     internal func update(url: URL, imageHash: Int) {
         imageHashes[url] = imageHash
     }
-    
-    public func flush() {
-        containers.removeAllObjects()
+
+    internal func set(image: UIImage?, data: Data, for url: URL) {
+        guard let image = image else {
+            images.removeObject(forKey: url as NSURL)
+            return
+        }
+
+        images.setObject(ImageContainer(image: image, data: data), forKey: url as NSURL)
+    }
+
+    internal func getImage(for url: URL) -> ImageContainer? {
+        images.object(forKey: url as NSURL)
     }
 }
 
