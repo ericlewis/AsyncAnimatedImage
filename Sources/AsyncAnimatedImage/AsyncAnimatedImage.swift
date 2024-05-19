@@ -1,7 +1,7 @@
 import SwiftUI
 
 protocol GIFAnimatableDelegate: AnyObject {
-    func update(url: URL, imageHash: Int)
+    func update(url: URL, imageHash: Int) async
 }
 
 class GIFAnimationContainer: _GIFAnimatable {
@@ -27,7 +27,9 @@ class GIFAnimationContainer: _GIFAnimatable {
     func animatorHasNewFrame() {
         guard let frame = animator.activeFrame() else { return }
         self.image = frame
-        self.delegate.update(url: self.url, imageHash: frame.hashValue)
+        Task {
+            await self.delegate.update(url: self.url, imageHash: frame.hashValue)
+        }
     }
     
     // MARK: Animation
@@ -50,7 +52,7 @@ class GIFAnimationContainer: _GIFAnimatable {
                 }
 
                 self.image = image
-                self.delegate.update(url: imageURL, imageHash: image?.hashValue ?? 0)
+                await self.delegate.update(url: imageURL, imageHash: image?.hashValue ?? 0)
                 self.animator.animate(withGIFData: data, size: size, contentMode: .center, loopCount: loopCount, preparationBlock: preparationBlock, animationBlock: animationBlock, loopBlock: loopBlock)
             } catch {
                 // Consider a better error handling mechanism here, e.g., delegate method.
@@ -93,8 +95,9 @@ class ImageContainer {
     private var containers: [URL: RetainedAnimationContainer] = [:]
     private var images: NSCache<NSURL, ImageContainer> = .init()
 
-    var imageHashes: [URL: Int] = [:]
-    
+    /// URL hash to image hash
+    var imageHashes: [Int: Int] = [:]
+
     public init() {
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
             // We use a reoccuring timer to clean up groups of images that aren't being referenced
@@ -120,7 +123,7 @@ class ImageContainer {
         }
 
         // Indicate to SwiftUI that it should rerender due to the observable (the dictionary) changing
-        let _ = imageHashes[url]
+        let _ = imageHashes[url.hashValue]
         return cachedContainer?.container.image
     }
 
@@ -169,7 +172,7 @@ class ImageContainer {
 
     @MainActor
     internal func update(url: URL, imageHash: Int) {
-        imageHashes[url] = imageHash
+        imageHashes[url.hashValue] = imageHash
     }
 
     internal func set(image: UIImage?, data: Data, for url: URL) {
