@@ -1,6 +1,7 @@
 import SwiftUI
 
 protocol GIFAnimatableDelegate: AnyObject {
+    func fetch(url: URL) async -> Data?
     func update(url: URL, imageHash: Int) async
 }
 
@@ -21,7 +22,7 @@ class GIFAnimationContainer: _GIFAnimatable {
         self.url = url
         self.delegate = delegate
         self.size = size
-        animate(withGIFURL: url)
+        fetchAndBeginAnimation(withGIFURL: url)
     }
     
     func animatorHasNewFrame() {
@@ -33,22 +34,31 @@ class GIFAnimationContainer: _GIFAnimatable {
     }
     
     // MARK: Animation
-    func animate(withGIFURL imageURL: URL, loopCount: Int = 0, preparationBlock: (() -> Void)? = nil, animationBlock: (() -> Void)? = nil, loopBlock: (() -> Void)? = nil) {
+    func fetchAndBeginAnimation(withGIFURL imageURL: URL, loopCount: Int = 0, preparationBlock: (() -> Void)? = nil, animationBlock: (() -> Void)? = nil, loopBlock: (() -> Void)? = nil) {
         self.task?.cancel()
         self.task = Task {
             do {
-                let image: UIImage?
-                let data: Data
+                var image: UIImage? = nil
+                var data: Data? = nil
                 if let storedImage = AnimatedImageCache.shared.getImage(for: imageURL) {
                     image = storedImage.image
                     data = storedImage.data
                 } else {
-                    let (receivedData, _) = try await URLSession.shared.data(from: imageURL)
+                    let receivedData = await self.delegate.fetch(url: imageURL)
                     try Task.checkCancellation()
-                    image = size == .zero ? UIImage(data: receivedData) : UIImage(data: receivedData)?.resized(to: size)
-                    data = receivedData
 
+                    if let receivedData = receivedData {
+                        image = size == .zero ? UIImage(data: receivedData) : UIImage(data: receivedData)?.resized(to: size)
+                        data = receivedData
+                    }
+
+                    // If we don't succeed, still store blank image/data to indicate we should not query again
                     AnimatedImageCache.shared.set(image: image, data: data, for: imageURL)
+                }
+
+                guard let data = data else {
+                    print("No data received for gif at url:", imageURL.absoluteString)
+                    return
                 }
 
                 self.image = image
@@ -77,10 +87,10 @@ class RetainedAnimationContainer {
 }
 
 class ImageContainer {
-    let image: UIImage
-    let data: Data
+    let image: UIImage?
+    let data: Data?
 
-    internal init(image: UIImage, data: Data) {
+    internal init(image: UIImage?, data: Data?) {
         self.image = image
         self.data = data
     }
@@ -93,6 +103,19 @@ class ImageContainer {
 
     private var containers: [URL: RetainedAnimationContainer] = [:]
     private var images: NSCache<NSURL, ImageContainer> = .init()
+
+    var fetcher: (URL) async -> Data? = { url in
+        do {
+            let (receivedData, response) = try await URLSession.shared.data(from: url)
+            if (response as? HTTPURLResponse)?.statusCode == 200 {
+                return receivedData
+            }
+        } catch {
+            print("Failed image fetch: \(error)")
+        }
+
+        return nil
+    }
 
     /// URL hash to image hash
     var imageHashes: [Int: Int] = [:]
@@ -173,12 +196,18 @@ class ImageContainer {
         containers.removeAll()
     }
 
+    // MARK: Delegate
+    internal func fetch(url: URL) async -> Data? {
+        await fetcher(url)
+    }
+
     @MainActor
     internal func update(url: URL, imageHash: Int) {
         imageHashes[url.hashValue] = imageHash
     }
 
-    internal func set(image: UIImage?, data: Data, for url: URL) {
+    // MARK: Internal API
+    internal func set(image: UIImage?, data: Data?, for url: URL) {
         guard let image = image else {
             images.removeObject(forKey: url as NSURL)
             return
