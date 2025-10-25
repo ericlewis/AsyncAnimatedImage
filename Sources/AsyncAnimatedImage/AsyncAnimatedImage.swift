@@ -88,7 +88,6 @@ class ImageContainer {
 
 @Observable public class AnimatedImageCache: GIFAnimatableDelegate {
     public static let shared = AnimatedImageCache()
-    private static let placeholder: UIImage = .init()
 
     private var timer: Timer?
 
@@ -127,8 +126,12 @@ class ImageContainer {
         return cachedContainer?.container.image
     }
 
-    public func gifImage(for url: URL?, size: CGSize = .zero) -> Image {
-        Image(uiImage: register(url: url, size: size) ?? Self.placeholder)
+    public func gifImage(for url: URL?, size: CGSize = .zero) -> Image? {
+        guard let image = register(url: url, size: size) else {
+            return nil
+        }
+
+        return Image(uiImage: image)
     }
 
     public func onAppear(for url: URL) {
@@ -189,6 +192,6 @@ class ImageContainer {
     }
 }
 
-public func AsyncAnimatedImage(url: URL?, size: CGSize = .zero) -> Image {
+public func AsyncAnimatedImage(url: URL?, size: CGSize = .zero) -> Image? {
     AnimatedImageCache.shared.gifImage(for: url, size: size)
 }
